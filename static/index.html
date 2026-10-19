@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AT URI Validator</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#141c31;--line:#2a3652;--text:#edf2ff;--muted:#a6b3ce;--blue:#7da7ff;--green:#56d6a0;--red:#ff7d8b;--yellow:#ffd479}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172545,#0b1020 60%);color:var(--text);font:16px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:32px 18px 60px}.eyebrow{color:var(--blue);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.1;margin:10px 0}p{color:var(--muted)}.panel{background:#141c31eF;border:1px solid var(--line);border-radius:18px;padding:22px;margin-top:20px;box-shadow:0 12px 40px #0002}
+label{display:block;font-weight:650;margin-bottom:8px}textarea,select{width:100%;background:#0b1224;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:13px;font:15px ui-monospace,Consolas,monospace}
+textarea{min-height:100px;resize:vertical}.controls{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-top:14px}
+button{border:0;border-radius:10px;padding:13px 20px;background:var(--blue);color:#071127;font-weight:800;font-size:15px;cursor:pointer}button:hover{filter:brightness(1.08)}
+.samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.sample{background:#1b2946;border:1px solid var(--line);color:var(--text);padding:8px 11px;border-radius:8px;cursor:pointer;font-size:13px}
+.hidden{display:none}.status{display:flex;align-items:center;gap:10px;font-size:21px;font-weight:800}.dot{width:11px;height:11px;border-radius:50%;background:var(--green)}.fail .dot{background:var(--red)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.metric{padding:14px;background:#0c1428;border:1px solid var(--line);border-radius:12px;min-width:0}.metric small{color:var(--muted);display:block;margin-bottom:5px}.metric code{overflow-wrap:anywhere;color:#c5d7ff}
+h2{font-size:18px;margin:24px 0 10px}.checks{display:grid;gap:9px}.check{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:11px;background:#0c1428;border-radius:10px}.check .icon{font-weight:900}.pass{color:var(--green)}.bad{color:var(--red)}.warning{color:var(--yellow)}ul{padding-left:22px}li{margin:6px 0;color:var(--muted)}.foot{font-size:12px;margin-top:18px}
+@media(max-width:650px){.controls,.grid{grid-template-columns:1fr}.panel{padding:16px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">Developer tooling · Hackathon prototype</div>
+<h1>AT URI Validator</h1>
+<p>Check syntax, inspect URI components, and test whether parsing and serialization preserve the original AT URI.</p>
+<section class="panel">
+<label for="uri">AT URI to validate</label>
+<textarea id="uri" spellcheck="false">at://alice.example/app.bsky.feed.post/3k5nobkf2w72g</textarea>
+<div class="controls">
+<div><label for="mode">Validation mode</label><select id="mode"><option value="lexicon">Restricted Lexicon AT URI</option><option value="general">General AT URI syntax</option></select></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="validate">Validate URI ↗</button><button id="searchRecord" style="background:#56d6a0">Search live record</button></div>
+</div>
+<div class="samples">
+<button class="sample" data-uri="at://alice.example/app.bsky.feed.post/3k5nobkf2w72g">Valid record</button>
+<button class="sample" data-uri="at://did:plc:vwzwgnygau7ed7b7wt5ux7y2/app.bsky.feed.post/3k5nobkf2w72g">DID authority</button>
+<button class="sample" data-uri="at://foo.com/">Trailing slash</button>
+<button class="sample" data-uri="at://example.com:3000">Host:port</button>
+</div>
+</section>
+<section id="results" class="panel hidden" aria-live="polite">
+<div id="status" class="status"><span class="dot"></span><span id="statusText">Result</span></div>
+<div class="grid" id="parts"></div>
+<h2>Validation checks</h2><div id="checks" class="checks"></div>
+<div id="errorsWrap"><h2>Errors</h2><ul id="errors"></ul></div>
+<div id="warningsWrap"><h2>Warnings</h2><ul id="warnings"></ul></div>
+<h2>Round-trip result</h2><div class="metric"><small>Serialized URI</small><code id="roundtrip"></code><p id="roundtripStatus"></p></div>
+</section>
+<section id="liveResult" class="panel hidden" aria-live="polite"><div class="status"><span class="dot"></span><span id="liveTitle">Live record lookup</span></div><p id="liveMessage"></p><div id="liveMeta" class="grid"></div><h2>Record JSON</h2><pre id="recordJson" style="white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1224;border:1px solid var(--line);padding:14px;border-radius:10px;max-height:440px;overflow:auto"></pre></section>
+<p class="foot">Live lookup uses the public Bluesky AppView API and works only for public records supported by that service. A lookup failure does not necessarily mean the URI syntax is invalid.</p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+async function runValidation(){
+ const uri=$('uri').value;
+ $('validate').disabled=true;$('validate').textContent='Checking…';
+ try{
+  const res=await fetch('/api/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uri,mode:$('mode').value})});
+  const d=await res.json();
+  $('results').classList.remove('hidden');$('status').classList.toggle('fail',!d.valid);
+  $('statusText').textContent=d.valid?'Syntax checks passed':'Validation failed';
+  const p=d.parsed;
+  $('parts').innerHTML=p?Object.entries({Scheme:p.scheme,Authority:p.authority,Path:p.path||'(empty)',Query:p.query||'(empty)',Fragment:p.fragment||'(empty)'}).map(([k,v])=>`<div class="metric"><small>${k}</small><code>${escapeHtml(v)}</code></div>`).join(''):'<div class="metric">Could not parse URI components.</div>';
+  $('checks').innerHTML=d.checks.map(c=>`<div class="check"><span class="icon ${c.passed?'pass':'bad'}">${c.passed?'✓':'✕'}</span><div><strong>${escapeHtml(c.name)}</strong><div><small>${escapeHtml(c.detail)}</small></div></div></div>`).join('');
+  $('errorsWrap').classList.toggle('hidden',!d.errors.length);$('errors').innerHTML=d.errors.map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+  $('warningsWrap').classList.toggle('hidden',!d.warnings.length);$('warnings').innerHTML=d.warnings.map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+  $('roundtrip').textContent=d.round_trip??'Not available';$('roundtripStatus').textContent=d.round_trip_matches?'✓ Exact string match':'No exact round-trip match';$('roundtripStatus').className=d.round_trip_matches?'pass':'bad';
+ }catch(e){alert('Could not reach the backend. Make sure the server is running.');}
+ finally{$('validate').disabled=false;$('validate').textContent='Validate URI ↗';}
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+$('validate').addEventListener('click',runValidation);
+document.querySelectorAll('.sample').forEach(b=>b.addEventListener('click',()=>{$('uri').value=b.dataset.uri;runValidation();}));
+$('uri').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')runValidation();});
+runValidation();
+
+async function searchRecord(){
+ const uri=$('uri').value.trim();
+ $('searchRecord').disabled=true;$('searchRecord').textContent='Searching…';
+ $('liveResult').classList.remove('hidden');
+ $('liveTitle').textContent='Searching public AT Protocol data…';
+ $('liveMessage').textContent='Looking up the record using its repository, collection, and record key.';
+ $('liveMeta').innerHTML='';$('recordJson').textContent='';
+ try{
+  const res=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uri})});
+  const d=await res.json();
+  $('liveTitle').textContent=d.found?'Public record found':'Record not found';
+  $('liveMessage').textContent=d.message||d.error||'No record was returned.';
+  if(d.found){
+   $('liveMeta').innerHTML=[['Resolved AT URI',d.resolved_uri||'—'],['CID',d.cid||'Not provided']].map(([k,v])=>`<div class="metric"><small>${escapeHtml(k)}</small><code>${escapeHtml(v)}</code></div>`).join('');
+   $('recordJson').textContent=JSON.stringify(d.record,null,2);
+  }else{
+   $('recordJson').textContent=JSON.stringify(d,null,2);
+  }
+ }catch(e){
+  $('liveTitle').textContent='Search request failed';
+  $('liveMessage').textContent='Could not reach the local backend. Make sure the app is running.';
+ }
+ finally{$('searchRecord').disabled=false;$('searchRecord').textContent='Search live record';}
+}
+$('searchRecord').addEventListener('click',searchRecord);
+
+</script></body></html>
