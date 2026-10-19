@@ -1,6 +1,5 @@
 # AT URI Syntax Compatibility and Round-Trip Validator
 
-A starter hackathon prototype with a FastAPI backend and browser frontend.
 
 ## Requirements
 - Python 3.10 or newer
