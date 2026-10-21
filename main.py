@@ -16,6 +16,7 @@ class ValidateRequest(BaseModel):
     mode: str = "lexicon"
 
 
+
 def parse_at_uri(uri: str):
     """Parse an AT URI while preserving its original components."""
     pattern = r"at://([^/?#]+)(/[^?#]*)?(\?[^#]*)?(#.*)?"
@@ -31,7 +32,6 @@ def parse_at_uri(uri: str):
         "query": match.group(3) or "",
         "fragment": match.group(4) or "",
     }
-
 
 def validate(uri: str, mode: str):
     errors, warnings, checks = [], [], []
